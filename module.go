@@ -18,11 +18,7 @@ func init() {
 	httpcaddyfile.RegisterHandlerDirective("mark_ip", parseCaddyfileMarkIP)
 }
 
-// IPStore is a global store for IPs
-var (
-	ipStore     = make(map[string]struct{})
-	ipStoreLock sync.RWMutex
-)
+var ipStore = sync.Map{}
 
 // MarkIP implements an HTTP handler that stores IPs
 type MarkIP struct {
@@ -67,70 +63,47 @@ func (m *IPMatcher) Provision(ctx caddy.Context) error {
 	return nil
 }
 
-// ServeHTTP implements caddyhttp.MiddlewareHandler.
+// Optimized MarkIP.ServeHTTP with minimal logging
 func (m *MarkIP) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	ip := getRealIP(r)
-	if ip != "" {
-		ipStoreLock.Lock()
-		ipStore[ip] = struct{}{}
-		ipStoreLock.Unlock()
-		m.logger.Info("marked ip",
-			zap.String("ip", ip),
-			zap.String("path", r.URL.Path),
-			zap.String("method", r.Method))
-	} else {
-		m.logger.Warn("could not determine real IP",
-			zap.String("path", r.URL.Path),
-			zap.String("method", r.Method))
+	if ip := getRealIP(r); ip != "" {
+		// Keep only essential logging for new IP additions
+		if _, loaded := ipStore.LoadOrStore(ip, struct{}{}); !loaded {
+			m.logger.Info("new ip marked", zap.String("ip", ip))
+		}
 	}
 	return next.ServeHTTP(w, r)
 }
 
-// Match implements caddyhttp.RequestMatcher
+// Optimized IPMatcher.Match with minimal logging
 func (m *IPMatcher) Match(r *http.Request) bool {
 	ip := getRealIP(r)
 	if ip == "" {
-		m.logger.Debug("no IP found in request",
-			zap.String("path", r.URL.Path),
-			zap.String("method", r.Method))
 		return false
 	}
-
-	ipStoreLock.RLock()
-	_, exists := ipStore[ip]
-	ipStoreLock.RUnlock()
-
-	m.logger.Debug("checking IP match",
-		zap.String("ip", ip),
-		zap.String("path", r.URL.Path),
-		zap.String("method", r.Method),
-		zap.Bool("matched", exists))
-
+	_, exists := ipStore.Load(ip)
 	return exists
 }
 
-// getRealIP implements the IP resolution logic
 func getRealIP(r *http.Request) string {
-	// Try Cloudflare IP
+	// Direct header checks without allocation
 	if ip := r.Header.Get("Cf-Connecting-Ip"); ip != "" {
 		return ip
 	}
-	// Try X-Forwarded-For
 	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
 		return ip
 	}
-	// Try X-Real-Ip
 	if ip := r.Header.Get("X-Real-Ip"); ip != "" {
 		return ip
 	}
-	// Use Remote Address
 
-	// if r.RemoteAddr is in the format "IP:port", we need to extract the IP
-	if strings.Contains(r.RemoteAddr, ":") {
-		return strings.Split(r.RemoteAddr, ":")[0]
+	// Parse RemoteAddr
+	if addr := r.RemoteAddr; addr != "" {
+		if idx := strings.IndexByte(addr, ':'); idx != -1 {
+			return addr[:idx]
+		}
+		return addr
 	}
-
-	return r.RemoteAddr
+	return ""
 }
 
 // parseCaddyfileMarkIP unmarshals tokens from h into a new middleware handler
