@@ -1,7 +1,6 @@
 package ipmark
 
 import (
-    "fmt"
     "net/http"
     "sync"
 
@@ -15,7 +14,7 @@ func init() {
     caddy.RegisterModule(MarkIP{})
     caddy.RegisterModule(IPMatcher{})
     httpcaddyfile.RegisterHandlerDirective("mark_ip", parseCaddyfileMarkIP)
-    httpcaddyfile.RegisterMatcherDirective("match_ip", parseCaddyfileMatchIP)
+    httpcaddyfile.RegisterHandlerDirective("match_ip", parseCaddyfileMatchIP)
 }
 
 // IPStore is a global store for IPs
