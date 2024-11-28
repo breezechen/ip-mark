@@ -2,6 +2,7 @@ package ipmark
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/caddyserver/caddy/v2"
@@ -123,6 +124,12 @@ func getRealIP(r *http.Request) string {
 		return ip
 	}
 	// Use Remote Address
+
+	// if r.RemoteAddr is in the format "IP:port", we need to extract the IP
+	if strings.Contains(r.RemoteAddr, ":") {
+		return strings.Split(r.RemoteAddr, ":")[0]
+	}
+
 	return r.RemoteAddr
 }
 
