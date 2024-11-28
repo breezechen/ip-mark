@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"go.uber.org/zap"
@@ -14,7 +15,6 @@ func init() {
 	caddy.RegisterModule(MarkIP{})
 	caddy.RegisterModule(IPMatcher{})
 	httpcaddyfile.RegisterHandlerDirective("mark_ip", parseCaddyfileMarkIP)
-	// 移除了 RegisterMatcherDirective 的调用，因为 matcher 只需要通过 RegisterModule 注册
 }
 
 // IPStore is a global store for IPs
@@ -43,9 +43,15 @@ func (MarkIP) CaddyModule() caddy.ModuleInfo {
 
 func (IPMatcher) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
-		ID:  "http.matchers.match_ip", // 确保使用正确的 matcher 模块 ID
+		ID:  "http.matchers.match_ip",
 		New: func() caddy.Module { return new(IPMatcher) },
 	}
+}
+
+// UnmarshalCaddyfile implements caddyfile.Unmarshaler.
+func (m *IPMatcher) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
+	// match_ip 指令不需要任何参数，所以直接返回 nil
+	return nil
 }
 
 // Provision sets up the module
@@ -134,4 +140,5 @@ var (
 	_ caddyhttp.RequestMatcher    = (*IPMatcher)(nil)
 	_ caddy.Provisioner           = (*MarkIP)(nil)
 	_ caddy.Provisioner           = (*IPMatcher)(nil)
+	_ caddyfile.Unmarshaler       = (*IPMatcher)(nil) // 添加这个接口检查
 )
